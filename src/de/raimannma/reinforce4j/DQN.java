@@ -99,7 +99,7 @@ public class DQN {
         return a2Mat;
     }
 
-    int act(final double[] stateArr) {
+    public int act(final double[] stateArr) {
         final Mat state = new Mat(this.numStates, 1);
         state.setFrom(stateArr);
 
@@ -116,7 +116,7 @@ public class DQN {
         return action;
     }
 
-    void learn(final double reward) {
+    public void learn(final double reward) {
         if (!this.isFirstRun && this.alpha > 0) {
             this.learnFromTuple(new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
             if (this.t % this.experienceAddEvery == 0) {
