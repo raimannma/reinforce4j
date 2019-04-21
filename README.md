@@ -1,8 +1,12 @@
 this is a rewritten version of reinforcejs from Andrej Karpathy
 
-Supports:
+**Supports:**
+
 -DQN Agent
 
-Coming next
+
+**Coming next:**
+
 -TD Agent
+
 -DP Agent
