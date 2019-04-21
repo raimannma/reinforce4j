@@ -6,8 +6,6 @@ this is a rewritten version of reinforcejs from Andrej Karpathy
 >Deep Reinforcement Learning<br>
 >Deep Q Learning
 
-**Coming next:**
-
--TD Agent
-
+**Coming next:**<br>
+-TD Agent<br>
 -DP Agent
