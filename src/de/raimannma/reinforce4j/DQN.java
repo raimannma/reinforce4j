@@ -1,21 +1,25 @@
 package de.raimannma.reinforce4j;
 
+import com.google.gson.Gson;
 import net.jafama.FastMath;
 
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.stream.Collectors;
 
 public class DQN {
     private final int numStates;
     private final int numActions;
     private final double gamma;
-    private final double epsilon;
-    private final double alpha;
     private final int experienceAddEvery;
     private final int experienceSize;
     private final int learningStepsPerIteration;
     private final double tdErrorClamp;
     private final int numHiddenUnits;
+    private final int saveInterval;
+    private double alpha;
+    private double epsilon;
     private Mat W1;
     private Mat B1;
     private Mat W2;
@@ -45,6 +49,8 @@ public class DQN {
         this.tdErrorClamp = config.getOrDefault(Option.TD_ERROR_CLAMP, 1.0);
         this.numHiddenUnits = DQN.toInteger(config.getOrDefault(Option.NUM_HIDDEN_UNITS, 100.0));
 
+        this.saveInterval = DQN.toInteger(config.getOrDefault(Option.SAVE_INTERVAL, 100.0));
+
         this.reset();
     }
 
@@ -68,6 +74,24 @@ public class DQN {
             }
         }
         return maxIndex;
+    }
+
+    public void createFrom(final Mat[] net) {
+        if (net != null) {
+            this.W1 = net[0];
+            this.W2 = net[1];
+            this.B1 = net[2];
+            this.B2 = net[3];
+            if (this.W1.n * this.W1.d != this.numHiddenUnits * this.numStates ||
+                    this.W2.n * this.W2.d != this.numHiddenUnits * this.numActions ||
+                    this.B1.n * this.B1.d != this.numHiddenUnits ||
+                    this.B2.n * this.B2.d != this.numActions) {
+                this.reset();
+                System.out.println("Cannot create from this model!");
+            } else {
+                System.out.println("Successful created!");
+            }
+        }
     }
 
     private void reset() {
@@ -132,6 +156,10 @@ public class DQN {
             }
             this.t++;
 
+            if (this.t % this.saveInterval == 0) {
+                this.saveModel();
+            }
+
             for (int i = 0; i < this.learningStepsPerIteration; i++) {
                 final int rand = Utils.randI(this.experience.size());
                 this.learnFromTuple(this.experience.get(rand));
@@ -160,5 +188,71 @@ public class DQN {
         this.W2.update(this.alpha);
         this.B1.update(this.alpha);
         this.B2.update(this.alpha);
+    }
+
+    private void saveModel() {
+        final File file = new File("dqnAgentW1.json");
+        final File file1 = new File("dqnAgentW2.json");
+        final File file2 = new File("dqnAgentB1.json");
+        final File file3 = new File("dqnAgentB2.json");
+        try {
+            BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+            writer.write(new Gson().toJson(this.W1));
+
+            writer = new BufferedWriter(new FileWriter(file1));
+            writer.write(new Gson().toJson(this.W2));
+
+            writer = new BufferedWriter(new FileWriter(file2));
+            writer.write(new Gson().toJson(this.B1));
+
+            writer = new BufferedWriter(new FileWriter(file3));
+            writer.write(new Gson().toJson(this.B2));
+        } catch (final IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public Mat[] loadModel() {
+        final File file = new File("dqnAgentW1.json");
+        final File file1 = new File("dqnAgentW2.json");
+        final File file2 = new File("dqnAgentB1.json");
+        final File file3 = new File("dqnAgentB2.json");
+        if (!file.exists() || !file1.exists() || !file2.exists() || !file3.exists()) {
+            return null;
+        }
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(file));
+            final Mat w1 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.W1.getClass());
+
+            reader = new BufferedReader(new FileReader(file1));
+            final Mat w2 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.W2.getClass());
+
+            reader = new BufferedReader(new FileReader(file2));
+            final Mat b1 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.B1.getClass());
+
+            reader = new BufferedReader(new FileReader(file3));
+            final Mat b2 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.B2.getClass());
+
+            return new Mat[]{w1, w2, b1, b2};
+        } catch (final FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        throw new RuntimeException();
+    }
+
+    public double getEpsilon() {
+        return this.epsilon;
+    }
+
+    public void setEpsilon(final double val) {
+        this.epsilon = val;
+    }
+
+    public double getAlpha() {
+        return this.alpha;
+    }
+
+    public void setAlpha(final double val) {
+        this.alpha = val;
     }
 }

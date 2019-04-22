@@ -5,6 +5,7 @@ import net.jafama.FastMath;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Queue;
+import java.util.stream.IntStream;
 
 class Graph {
     private final boolean needsBackprop;
@@ -58,9 +59,7 @@ class Graph {
         assert mat1.w.length == mat2.w.length;
 
         final Mat out = new Mat(mat1.n, mat1.d);
-        for (int i = 0; i < mat1.w.length; i++) {
-            out.w[i] = mat1.w[i] + mat2.w[i];
-        }
+        IntStream.range(0, mat1.w.length).parallel().forEach(i -> out.w[i] = mat1.w[i] + mat2.w[i]);
         if (this.needsBackprop) {
             this.backpropQueue.add(new BackpropEntry(Backprop.ADD, mat1, mat2, out));
         }
@@ -111,16 +110,15 @@ class Graph {
         }
 
         private void addBack(final Mat mat1, final Mat mat2, final Mat out) {
-            for (int i = 0; i < mat1.w.length; i++) {
+
+            IntStream.range(0, mat1.w.length).parallel().forEach(i -> {
                 mat1.dw[i] += out.dw[i];
                 mat2.dw[i] += out.dw[i];
-            }
+            });
         }
 
         private void tanhBack(final Mat mat, final Mat out) {
-            for (int i = 0; i < mat.w.length; i++) {
-                mat.dw[i] += (1 - FastMath.pow(out.w[i], 2)) * out.dw[i];
-            }
+            IntStream.range(0, mat.w.length).parallel().forEach(i -> mat.dw[i] += (1 - FastMath.pow(out.w[i], 2)) * out.dw[i]);
         }
     }
 }
