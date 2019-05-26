@@ -5,9 +5,9 @@ import java.util.stream.IntStream;
 
 class Mat {
     final double[] w;
+    final double[] dw;
     final int d;
     final int n;
-    final double[] dw;
 
     Mat(final int n, final int d) {
         this.n = n;

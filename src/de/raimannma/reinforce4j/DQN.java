@@ -98,7 +98,7 @@ public class DQN {
         this.isFirstRun = true;
     }
 
-    private Mat forwardQ(final Mat state, final boolean needsBackprop) {
+    private Mat calcQ(final Mat state, final boolean needsBackprop) {
         this.lastG = new Graph(needsBackprop);
         return this.lastG.add(this.lastG.mul(this.W2, this.lastG.tanh(this.lastG.add(this.lastG.mul(this.W1, state), this.B1))), this.B2);
     }
@@ -108,7 +108,7 @@ public class DQN {
 
         final int action = FastMath.random() < this.epsilon ?
                 DQN.rand.nextInt(this.numActions) :
-                DQN.maxIndex(this.forwardQ(state, false).w);
+                DQN.maxIndex(this.calcQ(state, false).w);
         this.lastState = this.currentState;
         this.lastAction = this.currentAction;
         this.currentState = state;
@@ -149,10 +149,10 @@ public class DQN {
     }
 
     private void learnFromTuple(final Experience exp) {
-        final Mat tMat = this.forwardQ(exp.getCurrentState(), false);
+        final Mat tMat = this.calcQ(exp.getCurrentState(), false);
         final double qMax = exp.getLastReward() + this.gamma * Arrays.stream(tMat.w).max().orElseThrow();
 
-        final Mat pred = this.forwardQ(exp.getLastState(), true);
+        final Mat pred = this.calcQ(exp.getLastState(), true);
         double tdError = pred.w[exp.getLastAction()] - qMax;
         if (FastMath.abs(tdError) > this.tdErrorClamp) {
             tdError = tdError > this.tdErrorClamp ?

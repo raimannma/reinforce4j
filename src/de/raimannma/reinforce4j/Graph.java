@@ -38,17 +38,16 @@ class Graph {
         final int n = mat1.n;
         final int m2d = mat2.d;
         final Mat out = new Mat(n, m2d);
-        for (int i = 0; i < n; i++) {
+        IntStream.range(0, n).parallel().forEach(i -> {
             final int m1i = m1d * i;
             final int m2di = m2d * i;
-            for (int j = 0; j < m2d; j++) {
-                double dot = 0;
-                for (int k = 0; k < m1d; k++) {
-                    dot += mat1.w[m1i + k] * mat2.w[m2d * k + j];
-                }
-                out.w[m2di + j] = dot;
-            }
-        }
+            IntStream.range(0, m2d)
+                    .parallel()
+                    .forEach(finalJ -> out.w[m2di + finalJ] = IntStream.range(0, m1d)
+                            .parallel()
+                            .mapToDouble(value -> mat1.w[m1i + value] * mat2.w[m2d * value + finalJ])
+                            .sum());
+        });
         if (this.needsBackprop) {
             this.backpropQueue.add(new Backprop(BackpropMethod.MUL, mat1, mat2, out));
         }
