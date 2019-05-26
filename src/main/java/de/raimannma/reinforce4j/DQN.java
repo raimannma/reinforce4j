@@ -6,12 +6,13 @@ import net.jafama.FastMath;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.SplittableRandom;
+import java.util.HashMap;
+import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class DQN {
-    private static final SplittableRandom rand = new SplittableRandom();
+    private static final Random rand = new Random();
     private final int numStates;
     private final int numActions;
     private final double gamma;
@@ -23,11 +24,11 @@ public class DQN {
     private final int saveInterval;
     private final double alpha;
     private final double epsilon;
-    private Mat W1;
-    private Mat B1;
-    private Mat W2;
-    private Mat B2;
-    private ArrayList<Experience> experience;
+    private final Mat W1;
+    private final Mat B1;
+    private final Mat W2;
+    private final Mat B2;
+    private final ArrayList<Experience> experience;
     private int experienceIndex;
     private int t;
     private double lastReward;
@@ -38,7 +39,7 @@ public class DQN {
     private Graph lastG;
     private boolean isFirstRun;
 
-    public DQN(final int numActions, final int numStates, final Configuration config) {
+    public DQN(final int numActions, final int numStates, final HashMap<Option, Double> config) {
         this.numActions = numActions;
         this.numStates = numStates;
 
@@ -54,12 +55,27 @@ public class DQN {
 
         this.saveInterval = DQN.toInteger(config.getOrDefault(Option.SAVE_INTERVAL, 100.0));
 
-        this.reset();
+        this.W1 = DQN.createRandMat(this.numHiddenUnits, this.numStates);
+        this.B1 = new Mat(this.numHiddenUnits, 1);
+        this.W2 = DQN.createRandMat(this.numActions, this.numHiddenUnits);
+        this.B2 = new Mat(this.numActions, 1);
+
+        this.experience = new ArrayList<>();
+        this.experienceIndex = 0;
+
+        this.t = 0;
+
+        this.lastReward = 0;
+        this.lastState = null;
+        this.currentState = null;
+        this.lastAction = 0;
+        this.currentAction = 0;
+        this.isFirstRun = true;
     }
 
     private static Mat createRandMat(final int n, final int d) {
         final Mat mat = new Mat(n, d);
-        Arrays.setAll(mat.w, i -> Utils.randN(0, 0.01));
+        Arrays.setAll(mat.w, i -> DQN.rand.nextGaussian() / 100);
         return mat;
     }
 
@@ -77,25 +93,6 @@ public class DQN {
             }
         }
         return maxIndex;
-    }
-
-    private void reset() {
-        this.W1 = DQN.createRandMat(this.numHiddenUnits, this.numStates);
-        this.B1 = new Mat(this.numHiddenUnits, 1);
-        this.W2 = DQN.createRandMat(this.numActions, this.numHiddenUnits);
-        this.B2 = new Mat(this.numActions, 1);
-
-        this.experience = new ArrayList<>();
-        this.experienceIndex = 0;
-
-        this.t = 0;
-
-        this.lastReward = 0;
-        this.lastState = null;
-        this.currentState = null;
-        this.lastAction = 0;
-        this.currentAction = 0;
-        this.isFirstRun = true;
     }
 
     private Mat calcQ(final Mat state, final boolean needsBackprop) {
@@ -199,17 +196,18 @@ public class DQN {
             return null;
         }
         try {
+            final Gson gson = new Gson();
             BufferedReader reader = new BufferedReader(new FileReader(file));
-            final Mat w1 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.W1.getClass());
+            final Mat w1 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.W1.getClass());
 
             reader = new BufferedReader(new FileReader(file1));
-            final Mat w2 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.W2.getClass());
+            final Mat w2 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.W2.getClass());
 
             reader = new BufferedReader(new FileReader(file2));
-            final Mat b1 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.B1.getClass());
+            final Mat b1 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.B1.getClass());
 
             reader = new BufferedReader(new FileReader(file3));
-            final Mat b2 = new Gson().fromJson(reader.lines().collect(Collectors.joining()), this.B2.getClass());
+            final Mat b2 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.B2.getClass());
 
             return new Mat[]{w1, w2, b1, b2};
         } catch (final FileNotFoundException e) {
