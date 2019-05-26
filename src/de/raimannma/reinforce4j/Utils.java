@@ -11,8 +11,4 @@ enum Utils {
         return mu + Utils.rand.nextGaussian() * std;
     }
 
-    public static int randI(final int max) {
-        return Utils.rand.nextInt(max);
-    }
-
 }

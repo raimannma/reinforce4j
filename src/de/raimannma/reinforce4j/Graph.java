@@ -9,7 +9,7 @@ import java.util.stream.IntStream;
 
 class Graph {
     private final boolean needsBackprop;
-    private final Queue<BackpropEntry> backpropQueue;
+    private final Queue<Backprop> backpropQueue;
 
     Graph(final boolean needsBackprop) {
         this.needsBackprop = needsBackprop;
@@ -26,7 +26,7 @@ class Graph {
         final Mat out = new Mat(mat.n, mat.d);
         Arrays.setAll(out.w, i -> FastMath.tanh(mat.w[i]));
         if (this.needsBackprop) {
-            this.backpropQueue.add(new BackpropEntry(Backprop.TANH, mat, out));
+            this.backpropQueue.add(new Backprop(BackpropMethod.TANH, mat, out));
         }
         return out;
     }
@@ -50,7 +50,7 @@ class Graph {
             }
         }
         if (this.needsBackprop) {
-            this.backpropQueue.add(new BackpropEntry(Backprop.MUL, mat1, mat2, out));
+            this.backpropQueue.add(new Backprop(BackpropMethod.MUL, mat1, mat2, out));
         }
         return out;
     }
@@ -61,31 +61,31 @@ class Graph {
         final Mat out = new Mat(mat1.n, mat1.d);
         IntStream.range(0, mat1.w.length).parallel().forEach(i -> out.w[i] = mat1.w[i] + mat2.w[i]);
         if (this.needsBackprop) {
-            this.backpropQueue.add(new BackpropEntry(Backprop.ADD, mat1, mat2, out));
+            this.backpropQueue.add(new Backprop(BackpropMethod.ADD, mat1, mat2, out));
         }
         return out;
     }
 
-    private enum Backprop {
+    private enum BackpropMethod {
         ADD, MUL, TANH
     }
 
-    private class BackpropEntry {
-        private final Backprop backprop;
+    private class Backprop {
+        private final BackpropMethod backpropMethod;
         private final Mat[] args;
 
-        private BackpropEntry(final Backprop backprop, final Mat... args) {
-            this.backprop = backprop;
+        private Backprop(final BackpropMethod backpropMethod, final Mat... args) {
+            this.backpropMethod = backpropMethod;
             this.args = args;
         }
 
 
         void run() {
-            if (this.backprop == Backprop.ADD) {
+            if (this.backpropMethod == BackpropMethod.ADD) {
                 this.addBack(this.args[0], this.args[1], this.args[2]);
-            } else if (this.backprop == Backprop.MUL) {
+            } else if (this.backpropMethod == BackpropMethod.MUL) {
                 this.mulBack(this.args[0], this.args[1], this.args[2]);
-            } else if (this.backprop == Backprop.TANH) {
+            } else if (this.backpropMethod == BackpropMethod.TANH) {
                 this.tanhBack(this.args[0], this.args[1]);
             }
         }
@@ -110,7 +110,6 @@ class Graph {
         }
 
         private void addBack(final Mat mat1, final Mat mat2, final Mat out) {
-
             IntStream.range(0, mat1.w.length).parallel().forEach(i -> {
                 mat1.dw[i] += out.dw[i];
                 mat2.dw[i] += out.dw[i];
@@ -118,7 +117,7 @@ class Graph {
         }
 
         private void tanhBack(final Mat mat, final Mat out) {
-            IntStream.range(0, mat.w.length).parallel().forEach(i -> mat.dw[i] += (1 - FastMath.pow(out.w[i], 2)) * out.dw[i]);
+            IntStream.range(0, mat.w.length).parallel().forEach(i -> mat.dw[i] += (1 - out.w[i] * out.w[i]) * out.dw[i]);
         }
     }
 }

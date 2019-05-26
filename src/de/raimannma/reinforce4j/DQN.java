@@ -6,9 +6,12 @@ import net.jafama.FastMath;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.SplittableRandom;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class DQN {
+    private static final SplittableRandom rand = new SplittableRandom();
     private final int numStates;
     private final int numActions;
     private final double gamma;
@@ -18,8 +21,8 @@ public class DQN {
     private final double tdErrorClamp;
     private final int numHiddenUnits;
     private final int saveInterval;
-    private double alpha;
-    private double epsilon;
+    private final double alpha;
+    private final double epsilon;
     private Mat W1;
     private Mat B1;
     private Mat W2;
@@ -41,7 +44,7 @@ public class DQN {
 
         this.gamma = config.getOrDefault(Option.GAMMA, 0.75);
         this.epsilon = config.getOrDefault(Option.EPSILON, 0.1);
-        this.alpha = config.getOrDefault(Option.ALPHA, 0.01);
+        this.alpha = config.getOrDefault(Option.ALPHA, 0.05);
 
         this.experienceAddEvery = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_ADD_EVERY, 25.0));
         this.experienceSize = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_SIZE, 5000.0));
@@ -76,24 +79,6 @@ public class DQN {
         return maxIndex;
     }
 
-    public void createFrom(final Mat[] net) {
-        if (net != null) {
-            this.W1 = net[0];
-            this.W2 = net[1];
-            this.B1 = net[2];
-            this.B2 = net[3];
-            if (this.W1.n * this.W1.d != this.numHiddenUnits * this.numStates ||
-                    this.W2.n * this.W2.d != this.numHiddenUnits * this.numActions ||
-                    this.B1.n * this.B1.d != this.numHiddenUnits ||
-                    this.B2.n * this.B2.d != this.numActions) {
-                this.reset();
-                System.out.println("Cannot create from this model!");
-            } else {
-                System.out.println("Successful created!");
-            }
-        }
-    }
-
     private void reset() {
         this.W1 = DQN.createRandMat(this.numHiddenUnits, this.numStates);
         this.B1 = new Mat(this.numHiddenUnits, 1);
@@ -114,25 +99,16 @@ public class DQN {
     }
 
     private Mat forwardQ(final Mat state, final boolean needsBackprop) {
-        final Graph graph = new Graph(needsBackprop);
-
-        final Mat a1Mat = graph.add(graph.mul(this.W1, state), this.B1);
-        final Mat h1Mat = graph.tanh(a1Mat);
-        final Mat a2Mat = graph.add(graph.mul(this.W2, h1Mat), this.B2);
-        this.lastG = graph;
-        return a2Mat;
+        this.lastG = new Graph(needsBackprop);
+        return this.lastG.add(this.lastG.mul(this.W2, this.lastG.tanh(this.lastG.add(this.lastG.mul(this.W1, state), this.B1))), this.B2);
     }
 
     public int act(final double[] stateArr) {
-        final Mat state = new Mat(this.numStates, 1);
-        state.setFrom(stateArr);
+        final Mat state = new Mat(this.numStates, 1, stateArr);
 
-        final int action;
-        if (FastMath.random() < this.epsilon) {
-            action = Utils.randI(this.numActions);
-        } else {
-            action = DQN.maxIndex(this.forwardQ(state, false).w);
-        }
+        final int action = FastMath.random() < this.epsilon ?
+                DQN.rand.nextInt(this.numActions) :
+                DQN.maxIndex(this.forwardQ(state, false).w);
         this.lastState = this.currentState;
         this.lastAction = this.currentAction;
         this.currentState = state;
@@ -141,32 +117,34 @@ public class DQN {
     }
 
     public void learn(final double reward) {
-        if (!this.isFirstRun && this.alpha > 0) {
-            this.learnFromTuple(new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
-            if (this.t % this.experienceAddEvery == 0) {
-                if (this.experience.size() > this.experienceIndex) {
-                    this.experience.set(this.experienceIndex, new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
-                } else {
-                    this.experience.add(this.experienceIndex, new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
-                }
-                this.experienceIndex++;
-                if (this.experienceIndex > this.experienceSize) {
-                    this.experienceIndex = 0;
-                }
-            }
-            this.t++;
-
-            if (this.t % this.saveInterval == 0) {
-                this.saveModel();
-            }
-
-            for (int i = 0; i < this.learningStepsPerIteration; i++) {
-                final int rand = Utils.randI(this.experience.size());
-                this.learnFromTuple(this.experience.get(rand));
-            }
-        } else {
+        if (this.isFirstRun) {
             this.isFirstRun = false;
+            this.lastReward = reward;
+            return;
         }
+
+        this.learnFromTuple(new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
+        if (this.t % this.experienceAddEvery == 0) {
+            if (this.experience.size() > this.experienceIndex) {
+                this.experience.set(this.experienceIndex, new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
+            } else {
+                this.experience.add(this.experienceIndex, new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
+            }
+            this.experienceIndex++;
+            if (this.experienceIndex > this.experienceSize) {
+                this.experienceIndex = 0;
+            }
+        }
+        this.t++;
+
+        if (this.t % this.saveInterval == 0) {
+            this.saveModel();
+        }
+
+        IntStream.range(0, this.learningStepsPerIteration)
+                .parallel()
+                .mapToObj(i -> this.experience.get(DQN.rand.nextInt(this.experienceSize)))
+                .forEach(this::learnFromTuple);
         this.lastReward = reward;
     }
 
@@ -238,21 +216,5 @@ public class DQN {
             e.printStackTrace();
         }
         throw new RuntimeException();
-    }
-
-    public double getEpsilon() {
-        return this.epsilon;
-    }
-
-    public void setEpsilon(final double val) {
-        this.epsilon = val;
-    }
-
-    public double getAlpha() {
-        return this.alpha;
-    }
-
-    public void setAlpha(final double val) {
-        this.alpha = val;
     }
 }
