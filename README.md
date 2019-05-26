@@ -1,3 +1,5 @@
+**Deep Reinforcement Learning in JAVA**
+
 this is a rewritten version of reinforcejs from Andrej Karpathy
 
 **Supports:**
