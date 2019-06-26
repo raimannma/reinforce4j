@@ -2,10 +2,13 @@ package de.raimannma.reinforce4j;
 
 import com.google.gson.Gson;
 import net.jafama.FastMath;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.ops.impl.indexaccum.IAMax;
+import org.nd4j.linalg.cpu.nativecpu.rng.CpuNativeRandom;
+import org.nd4j.linalg.factory.Nd4j;
 
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -20,7 +23,6 @@ public class DQN {
     private final int experienceSize;
     private final int learningStepsPerIteration;
     private final double tdErrorClamp;
-    private final int numHiddenUnits;
     private final int saveInterval;
     private final double alpha;
     private final double epsilon;
@@ -51,13 +53,13 @@ public class DQN {
         this.experienceSize = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_SIZE, 5000.0));
         this.learningStepsPerIteration = DQN.toInteger(config.getOrDefault(Option.LEARNING_STEPS_PER_ITERATION, 10.0));
         this.tdErrorClamp = config.getOrDefault(Option.TD_ERROR_CLAMP, 1.0);
-        this.numHiddenUnits = DQN.toInteger(config.getOrDefault(Option.NUM_HIDDEN_UNITS, 100.0));
+        final int numHiddenUnits = DQN.toInteger(config.getOrDefault(Option.NUM_HIDDEN_UNITS, 100.0));
 
         this.saveInterval = DQN.toInteger(config.getOrDefault(Option.SAVE_INTERVAL, 100.0));
 
-        this.W1 = DQN.createRandMat(this.numHiddenUnits, this.numStates);
-        this.B1 = new Mat(this.numHiddenUnits, 1);
-        this.W2 = DQN.createRandMat(this.numActions, this.numHiddenUnits);
+        this.W1 = DQN.createRandMat(numHiddenUnits, this.numStates);
+        this.B1 = new Mat(numHiddenUnits, 1);
+        this.W2 = DQN.createRandMat(this.numActions, numHiddenUnits);
         this.B2 = new Mat(this.numActions, 1);
 
         this.experience = new ArrayList<>();
@@ -74,25 +76,15 @@ public class DQN {
     }
 
     private static Mat createRandMat(final int n, final int d) {
-        final Mat mat = new Mat(n, d);
-        Arrays.setAll(mat.w, i -> DQN.rand.nextGaussian() / 100);
-        return mat;
+        return new Mat(n, d, Nd4j.rand(new int[]{n * d}, 0, 0.01, new CpuNativeRandom()));
     }
 
     private static int toInteger(final Double val) {
         return (int) FastMath.round(val);
     }
 
-    private static int maxIndex(final double[] arr) {
-        int maxIndex = 0;
-        double maxVal = arr[0];
-        for (int i = 1; i < arr.length; i++) {
-            if (arr[i] > maxVal) {
-                maxIndex = i;
-                maxVal = arr[i];
-            }
-        }
-        return maxIndex;
+    private static int maxIndex(final INDArray arr) {
+        return (int) Nd4j.getExecutioner().execAndReturn(new IAMax(arr)).getFinalResult();
     }
 
     private Mat calcQ(final Mat state, final boolean needsBackprop) {
@@ -101,7 +93,7 @@ public class DQN {
     }
 
     public int act(final double[] stateArr) {
-        final Mat state = new Mat(this.numStates, 1, stateArr);
+        final Mat state = new Mat(this.numStates, 1, Nd4j.create(stateArr));
 
         final int action = FastMath.random() < this.epsilon ?
                 DQN.rand.nextInt(this.numActions) :
@@ -139,7 +131,6 @@ public class DQN {
         }
 
         IntStream.range(0, this.learningStepsPerIteration)
-                .parallel()
                 .mapToObj(i -> this.experience.get(DQN.rand.nextInt(this.experienceSize)))
                 .forEach(this::learnFromTuple);
         this.lastReward = reward;
@@ -147,16 +138,16 @@ public class DQN {
 
     private void learnFromTuple(final Experience exp) {
         final Mat tMat = this.calcQ(exp.getCurrentState(), false);
-        final double qMax = exp.getLastReward() + this.gamma * Arrays.stream(tMat.w).max().orElseThrow();
+        final double qMax = exp.getLastReward() + this.gamma * (double) tMat.w.maxNumber();
 
         final Mat pred = this.calcQ(exp.getLastState(), true);
-        double tdError = pred.w[exp.getLastAction()] - qMax;
+        double tdError = pred.w.getDouble(exp.getLastAction()) - qMax;
         if (FastMath.abs(tdError) > this.tdErrorClamp) {
             tdError = tdError > this.tdErrorClamp ?
                     this.tdErrorClamp :
                     -this.tdErrorClamp;
         }
-        pred.dw[exp.getLastAction()] = tdError;
+        pred.w.putScalar(exp.getLastAction(), tdError);
         this.lastG.backward();
 
         this.W1.update(this.alpha);

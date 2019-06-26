@@ -1,9 +1,9 @@
 package de.raimannma.reinforce4j;
 
 import net.jafama.FastMath;
+import org.nd4j.linalg.ops.transforms.Transforms;
 
 import java.util.ArrayDeque;
-import java.util.Arrays;
 import java.util.Queue;
 import java.util.stream.IntStream;
 
@@ -24,7 +24,7 @@ class Graph {
 
     Mat tanh(final Mat mat) {
         final Mat out = new Mat(mat.n, mat.d);
-        Arrays.setAll(out.w, i -> FastMath.tanh(mat.w[i]));
+        out.w = Transforms.tanh(mat.w);
         if (this.needsBackprop) {
             this.backpropQueue.add(new Backprop(BackpropMethod.TANH, mat, out));
         }
@@ -38,16 +38,18 @@ class Graph {
         final int n = mat1.n;
         final int m2d = mat2.d;
         final Mat out = new Mat(n, m2d);
-        IntStream.range(0, n).parallel().forEach(i -> {
+        for (int i = 0; i < n; i++) {
             final int m1i = m1d * i;
             final int m2di = m2d * i;
-            IntStream.range(0, m2d)
-                    .parallel()
-                    .forEach(finalJ -> out.w[m2di + finalJ] = IntStream.range(0, m1d)
-                            .parallel()
-                            .mapToDouble(value -> mat1.w[m1i + value] * mat2.w[m2d * value + finalJ])
-                            .sum());
-        });
+            for (int j = 0; j < m2d; j++) {
+                double dot = 0.0;
+                for (int k = 0; k < m1d; k++) {
+                    dot += mat1.w.getDouble(m1i + k) * mat2.w.getDouble(m2d * k + j);
+                }
+                out.w.putScalar(m2di + j, dot);
+
+            }
+        }
         if (this.needsBackprop) {
             this.backpropQueue.add(new Backprop(BackpropMethod.MUL, mat1, mat2, out));
         }
@@ -55,10 +57,10 @@ class Graph {
     }
 
     Mat add(final Mat mat1, final Mat mat2) {
-        assert mat1.w.length == mat2.w.length;
+        assert mat1.w.length() == mat2.w.length();
 
         final Mat out = new Mat(mat1.n, mat1.d);
-        IntStream.range(0, mat1.w.length).parallel().forEach(i -> out.w[i] = mat1.w[i] + mat2.w[i]);
+        out.w = mat1.w.add(mat2.w);
         if (this.needsBackprop) {
             this.backpropQueue.add(new Backprop(BackpropMethod.ADD, mat1, mat2, out));
         }
@@ -97,26 +99,26 @@ class Graph {
                 final int m2di = m2d * i;
                 final int m1di = m1d * i;
                 for (int j = 0; j < m2d; j++) {
-                    final double b = out.dw[m2di + j];
+                    final double b = out.dw.getDouble(m2di + j);
                     for (int k = 0; k < m1d; k++) {
                         final int mm1 = m1di + k;
                         final int mm2 = m2d * k + j;
-                        mat1.dw[mm1] += mat2.w[mm2] * b;
-                        mat2.dw[mm2] += mat1.w[mm1] * b;
+                        mat1.dw.putScalar(mm1, mat1.dw.getDouble(mm1) + mat2.w.getDouble(mm2) * b);
+                        mat2.dw.putScalar(mm2, mat2.dw.getDouble(mm2) + mat1.w.getDouble(mm1) * b);
                     }
                 }
             }
         }
 
         private void addBack(final Mat mat1, final Mat mat2, final Mat out) {
-            IntStream.range(0, mat1.w.length).parallel().forEach(i -> {
-                mat1.dw[i] += out.dw[i];
-                mat2.dw[i] += out.dw[i];
+            IntStream.range(0, (int) mat1.w.length()).forEach(i -> {
+                mat1.dw.putScalar(i, mat1.dw.getDouble(i) + out.dw.getDouble(i));
+                mat2.dw.putScalar(i, mat2.dw.getDouble(i) + out.dw.getDouble(i));
             });
         }
 
         private void tanhBack(final Mat mat, final Mat out) {
-            IntStream.range(0, mat.w.length).parallel().forEach(i -> mat.dw[i] += (1 - out.w[i] * out.w[i]) * out.dw[i]);
+            IntStream.range(0, (int) mat.w.length()).forEach(i -> mat.dw.putScalar(i, mat.dw.getDouble(i) + (1 - FastMath.pow(out.w.getDouble(i), 2)) * out.dw.getDouble(i)));
         }
     }
 }
