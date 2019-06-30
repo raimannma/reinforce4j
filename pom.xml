@@ -30,10 +30,5 @@
             <artifactId>jafama</artifactId>
             <version>LATEST</version>
         </dependency>
-        <dependency>
-            <groupId>org.nd4j</groupId>
-            <artifactId>nd4j-native-platform</artifactId>
-            <version>LATEST</version>
-        </dependency>
     </dependencies>
 </project>
