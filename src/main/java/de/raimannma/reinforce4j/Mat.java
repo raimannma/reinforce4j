@@ -30,7 +30,7 @@ class Mat {
     }
 
     void update(final double val) {
-        IntStream.range(0, this.w.length).parallel().forEach(i -> this.w[i] -= val * this.dw[i]);
+        IntStream.range(0, this.w.length).forEach(i -> this.w[i] -= val * this.dw[i]);
         Arrays.fill(this.dw, 0);
     }
 }

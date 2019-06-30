@@ -38,13 +38,13 @@ class Graph {
         final int n = mat1.n;
         final int m2d = mat2.d;
         final Mat out = new Mat(n, m2d);
-        IntStream.range(0, n).parallel().forEach(i -> {
+        IntStream.range(0, n).forEach(i -> {
             final int m1i = m1d * i;
             final int m2di = m2d * i;
             IntStream.range(0, m2d)
-                    .parallel()
+
                     .forEach(finalJ -> out.w[m2di + finalJ] = IntStream.range(0, m1d)
-                            .parallel()
+
                             .mapToDouble(value -> mat1.w[m1i + value] * mat2.w[m2d * value + finalJ])
                             .sum());
         });
@@ -58,7 +58,7 @@ class Graph {
         assert mat1.w.length == mat2.w.length;
 
         final Mat out = new Mat(mat1.n, mat1.d);
-        IntStream.range(0, mat1.w.length).parallel().forEach(i -> out.w[i] = mat1.w[i] + mat2.w[i]);
+        IntStream.range(0, mat1.w.length).forEach(i -> out.w[i] = mat1.w[i] + mat2.w[i]);
         if (this.needsBackprop) {
             this.backpropQueue.add(new Backprop(BackpropMethod.ADD, mat1, mat2, out));
         }
@@ -109,14 +109,14 @@ class Graph {
         }
 
         private void addBack(final Mat mat1, final Mat mat2, final Mat out) {
-            IntStream.range(0, mat1.w.length).parallel().forEach(i -> {
+            IntStream.range(0, mat1.w.length).forEach(i -> {
                 mat1.dw[i] += out.dw[i];
                 mat2.dw[i] += out.dw[i];
             });
         }
 
         private void tanhBack(final Mat mat, final Mat out) {
-            IntStream.range(0, mat.w.length).parallel().forEach(i -> mat.dw[i] += (1 - out.w[i] * out.w[i]) * out.dw[i]);
+            IntStream.range(0, mat.w.length).forEach(i -> mat.dw[i] += (1 - out.w[i] * out.w[i]) * out.dw[i]);
         }
     }
 }

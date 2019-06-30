@@ -139,8 +139,7 @@ public class DQN {
         }
 
         IntStream.range(0, this.learningStepsPerIteration)
-                .parallel()
-                .mapToObj(i -> this.experience.get(DQN.rand.nextInt(this.experienceSize)))
+                .mapToObj(i -> this.experience.get(DQN.rand.nextInt(this.experience.size())))
                 .forEach(this::learnFromTuple);
         this.lastReward = reward;
     }
