@@ -7,6 +7,7 @@ this is a rewritten version of reinforcejs from Andrej Karpathy
 -DQN Agent<br>
 >Deep Reinforcement Learning<br>
 >Deep Q Learning
+-Multi Agent Envs
 
 **Coming next:**<br>
 -TD Agent<br>
