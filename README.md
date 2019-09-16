@@ -9,6 +9,8 @@ this is a rewritten version of reinforcejs from Andrej Karpathy
 >Deep Q Learning
 -Multi Agent Envs
 
+-some examples
+
 **Coming next:**<br>
 -TD Agent<br>
 -DP Agent
