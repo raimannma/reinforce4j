@@ -18,7 +18,10 @@ class Graph {
 
     void backward() {
         while (!this.backpropQueue.isEmpty()) {
-            this.backpropQueue.poll().run();
+            final Backprop poll = this.backpropQueue.poll();
+            if (poll != null) {
+                poll.run();
+            }
         }
     }
 
@@ -42,9 +45,7 @@ class Graph {
             final int m1i = m1d * i;
             final int m2di = m2d * i;
             IntStream.range(0, m2d)
-
                     .forEach(finalJ -> out.w[m2di + finalJ] = IntStream.range(0, m1d)
-
                             .mapToDouble(value -> mat1.w[m1i + value] * mat2.w[m2d * value + finalJ])
                             .sum());
         });
@@ -116,7 +117,7 @@ class Graph {
         }
 
         private void tanhBack(final Mat mat, final Mat out) {
-            IntStream.range(0, mat.w.length).forEach(i -> mat.dw[i] += (1 - out.w[i] * out.w[i]) * out.dw[i]);
+            IntStream.range(0, mat.w.length).parallel().forEach(i -> mat.dw[i] += (1 - out.w[i] * out.w[i]) * out.dw[i]);
         }
     }
 }

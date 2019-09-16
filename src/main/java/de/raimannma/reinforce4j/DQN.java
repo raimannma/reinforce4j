@@ -1,35 +1,35 @@
 package de.raimannma.reinforce4j;
 
-import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.jafama.FastMath;
 
 import java.io.*;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Random;
+import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class DQN {
-    private static final Random rand = new Random();
-    private final int numStates;
-    private final int numActions;
+    final int numStates;
+    final int numActions;
     private final double gamma;
-    private final int experienceAddEvery;
-    private final int experienceSize;
+    private final int expAddEvery;
+    private final int expSize;
     private final int learningStepsPerIteration;
     private final double tdErrorClamp;
-    private final int numHiddenUnits;
     private final int saveInterval;
     private final double alpha;
     private final double epsilon;
-    private final Mat W1;
-    private final Mat B1;
-    private final Mat W2;
-    private final Mat B2;
-    private final ArrayList<Experience> experience;
-    private int experienceIndex;
+    private final Experience[] exp;
+    private final boolean isSaving;
+    private final int agentIndex;
+    public Mat W1;
+    Mat B1;
+    Mat W2;
+    Mat B2;
+    private int expIndex;
     private int t;
     private double lastReward;
     private Mat lastState;
@@ -39,29 +39,43 @@ public class DQN {
     private Graph lastG;
     private boolean isFirstRun;
 
-    public DQN(final int numActions, final int numStates, final HashMap<Option, Double> config) {
+    DQN(final int numActions, final int numStates, final Map<Option, Double> config) {
+        this(numActions, numStates, config, 0, null);
+    }
+
+    public DQN(final int numActions, final int numStates, final Map<Option, Double> config, final int agentIndex, final Mat[] nets) {
         this.numActions = numActions;
         this.numStates = numStates;
+        this.agentIndex = agentIndex;
 
-        this.gamma = config.getOrDefault(Option.GAMMA, 0.75);
+        this.gamma = config.getOrDefault(Option.GAMMA, 0.3);
         this.epsilon = config.getOrDefault(Option.EPSILON, 0.1);
         this.alpha = config.getOrDefault(Option.ALPHA, 0.05);
 
-        this.experienceAddEvery = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_ADD_EVERY, 25.0));
-        this.experienceSize = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_SIZE, 5000.0));
+        this.expAddEvery = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_ADD_EVERY, 25.0));
+        this.expSize = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_SIZE, 5000.0));
         this.learningStepsPerIteration = DQN.toInteger(config.getOrDefault(Option.LEARNING_STEPS_PER_ITERATION, 10.0));
         this.tdErrorClamp = config.getOrDefault(Option.TD_ERROR_CLAMP, 1.0);
-        this.numHiddenUnits = DQN.toInteger(config.getOrDefault(Option.NUM_HIDDEN_UNITS, 100.0));
+        final int numHiddenUnits = DQN.toInteger(config.getOrDefault(Option.NUM_HIDDEN_UNITS, 100.0));
 
         this.saveInterval = DQN.toInteger(config.getOrDefault(Option.SAVE_INTERVAL, 100.0));
 
-        this.W1 = DQN.createRandMat(this.numHiddenUnits, this.numStates);
-        this.B1 = new Mat(this.numHiddenUnits, 1);
-        this.W2 = DQN.createRandMat(this.numActions, this.numHiddenUnits);
-        this.B2 = new Mat(this.numActions, 1);
+        this.isSaving = this.saveInterval != -1;
 
-        this.experience = new ArrayList<>();
-        this.experienceIndex = 0;
+        if (nets == null) {
+            this.W1 = DQN.createRandMat(numHiddenUnits, this.numStates);
+            this.W2 = DQN.createRandMat(this.numActions, numHiddenUnits);
+            this.B1 = new Mat(numHiddenUnits, 1);
+            this.B2 = new Mat(this.numActions, 1);
+        } else {
+            this.W1 = nets[0];
+            this.W2 = nets[1];
+            this.B1 = nets[2];
+            this.B2 = nets[3];
+        }
+
+        this.exp = new Experience[this.expSize];
+        this.expIndex = 0;
 
         this.t = 0;
 
@@ -73,14 +87,27 @@ public class DQN {
         this.isFirstRun = true;
     }
 
-    private static Mat createRandMat(final int n, final int d) {
+    static int toInteger(final Double val) {
+        return (int) FastMath.round(val);
+    }
+
+    static Mat createRandMat(final int n, final int d) {
         final Mat mat = new Mat(n, d);
-        Arrays.setAll(mat.w, i -> DQN.rand.nextGaussian() / 100);
+        Arrays.parallelSetAll(mat.w, i -> ThreadLocalRandom.current().nextGaussian() / 100);
         return mat;
     }
 
-    private static int toInteger(final Double val) {
-        return (int) FastMath.round(val);
+    public int act(final double[] stateArr) {
+        final Mat state = new Mat(this.numStates, 1, stateArr);
+
+        final int action = FastMath.random() < this.epsilon ?
+                ThreadLocalRandom.current().nextInt(this.numActions) :
+                DQN.maxIndex(this.calcQ(state, false).w);
+        this.lastState = this.currentState;
+        this.lastAction = this.currentAction;
+        this.currentState = state;
+        this.currentAction = action;
+        return action;
     }
 
     private static int maxIndex(final double[] arr) {
@@ -100,19 +127,6 @@ public class DQN {
         return this.lastG.add(this.lastG.mul(this.W2, this.lastG.tanh(this.lastG.add(this.lastG.mul(this.W1, state), this.B1))), this.B2);
     }
 
-    public int act(final double[] stateArr) {
-        final Mat state = new Mat(this.numStates, 1, stateArr);
-
-        final int action = FastMath.random() < this.epsilon ?
-                DQN.rand.nextInt(this.numActions) :
-                DQN.maxIndex(this.calcQ(state, false).w);
-        this.lastState = this.currentState;
-        this.lastAction = this.currentAction;
-        this.currentState = state;
-        this.currentAction = action;
-        return action;
-    }
-
     public void learn(final double reward) {
         if (this.isFirstRun) {
             this.isFirstRun = false;
@@ -121,26 +135,28 @@ public class DQN {
         }
 
         this.learnFromTuple(new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
-        if (this.t % this.experienceAddEvery == 0) {
-            if (this.experience.size() > this.experienceIndex) {
-                this.experience.set(this.experienceIndex, new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
-            } else {
-                this.experience.add(this.experienceIndex, new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState));
-            }
-            this.experienceIndex++;
-            if (this.experienceIndex > this.experienceSize) {
-                this.experienceIndex = 0;
+        if (this.t % this.expAddEvery == 0) {
+            this.exp[this.expIndex] = new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState);
+            this.expIndex++;
+            if (this.expIndex > this.expSize) {
+                this.expIndex = 0;
             }
         }
         this.t++;
 
-        if (this.t % this.saveInterval == 0) {
+        if (this.isSaving && this.t % this.saveInterval == 0) {
             this.saveModel();
         }
 
         IntStream.range(0, this.learningStepsPerIteration)
-                .mapToObj(i -> this.experience.get(DQN.rand.nextInt(this.experience.size())))
-                .forEach(this::learnFromTuple);
+                .mapToObj(i -> {
+                    Experience temp = null;
+                    while (temp == null) {
+                        temp = this.exp[ThreadLocalRandom.current().nextInt(this.exp.length)];
+                    }
+                    return temp;
+                })
+                .forEachOrdered(this::learnFromTuple);
         this.lastReward = reward;
     }
 
@@ -164,54 +180,61 @@ public class DQN {
         this.B2.update(this.alpha);
     }
 
-    private void saveModel() {
-        final File file = new File("dqnAgentW1.json");
-        final File file1 = new File("dqnAgentW2.json");
-        final File file2 = new File("dqnAgentB1.json");
-        final File file3 = new File("dqnAgentB2.json");
+    public void saveModel() {
+        this.saveModel(new File("agent.json"));
+    }
+
+    public void saveModel(final File file) {
         try {
-            BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-            writer.write(new Gson().toJson(this.W1));
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+            if (file.canWrite()) {
+                final BufferedWriter writer = new BufferedWriter(new FileWriter(file), 10 * 1024);
 
-            writer = new BufferedWriter(new FileWriter(file1));
-            writer.write(new Gson().toJson(this.W2));
+                final JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty("W1", this.W1.toJson());
+                jsonObject.addProperty("W2", this.W2.toJson());
+                jsonObject.addProperty("B1", this.B1.toJson());
+                jsonObject.addProperty("B2", this.B2.toJson());
 
-            writer = new BufferedWriter(new FileWriter(file2));
-            writer.write(new Gson().toJson(this.B1));
-
-            writer = new BufferedWriter(new FileWriter(file3));
-            writer.write(new Gson().toJson(this.B2));
+                writer.write(jsonObject.toString());
+                writer.close();
+                System.out.println("SAVED");
+            } else {
+                System.out.println("Can't write on file!");
+            }
         } catch (final IOException e) {
             e.printStackTrace();
         }
     }
 
-    public Mat[] loadModel() {
-        final File file = new File("dqnAgentW1.json");
-        final File file1 = new File("dqnAgentW2.json");
-        final File file2 = new File("dqnAgentB1.json");
-        final File file3 = new File("dqnAgentB2.json");
-        if (!file.exists() || !file1.exists() || !file2.exists() || !file3.exists()) {
-            return null;
+    public void loadModel() {
+        final File file = new File("agent.json");
+        if (!file.exists()) {
+            return;
         }
         try {
-            final Gson gson = new Gson();
-            BufferedReader reader = new BufferedReader(new FileReader(file));
-            final Mat w1 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.W1.getClass());
+            final BufferedReader reader = new BufferedReader(new FileReader(file));
 
-            reader = new BufferedReader(new FileReader(file1));
-            final Mat w2 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.W2.getClass());
+            final String json = reader.lines().collect(Collectors.joining());
 
-            reader = new BufferedReader(new FileReader(file2));
-            final Mat b1 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.B1.getClass());
+            final JsonParser parser = new JsonParser();
+            final JsonObject jsonObject = parser.parse(json).getAsJsonObject();
 
-            reader = new BufferedReader(new FileReader(file3));
-            final Mat b2 = gson.fromJson(reader.lines().collect(Collectors.joining()), this.B2.getClass());
+            this.W1 = Mat.fromJson(jsonObject.get("W1").getAsString());
+            this.W2 = Mat.fromJson(jsonObject.get("W2").getAsString());
+            this.B1 = Mat.fromJson(jsonObject.get("B1").getAsString());
+            this.B2 = Mat.fromJson(jsonObject.get("B2").getAsString());
 
-            return new Mat[]{w1, w2, b1, b2};
-        } catch (final FileNotFoundException e) {
+            reader.close();
+            System.out.println("LOADED");
+        } catch (final IOException e) {
             e.printStackTrace();
         }
-        throw new RuntimeException();
+    }
+
+    public int getIndex() {
+        return this.agentIndex;
     }
 }
