@@ -108,8 +108,8 @@ public class GridWorld extends PApplet {
 
         if (this.epoch > 10000) {
             this.noLoop();
-            this.frame.dispose();
-            this.frame.setVisible(false);
+            this.surface.setVisible(false);
+            this.exit();
         }
     }
 

@@ -56,7 +56,7 @@ public class Tile {
             this.isRed = false;
             return -1;
         } else {
-            return -0.05;
+            return 0;
         }
     }
 
