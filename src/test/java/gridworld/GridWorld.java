@@ -67,8 +67,8 @@ public class GridWorld extends PApplet {
         this.agent.learn(reward);
 
         if (this.rand.nextDouble() < 0.1) {
-            this.randomSpawnGreen();
             this.randomSpawnRed();
+            this.randomSpawnGreen();
         }
 
         final int tileSize = this.width / this.grid.length;
@@ -106,7 +106,7 @@ public class GridWorld extends PApplet {
         this.chart.updateXYSeries("reward", new ArrayList<>(this.xData), new ArrayList<>(this.yData), null);
         this.sw.repaintChart();
 
-        if (this.epoch > 10000) {
+        if (this.epoch > 5000) {
             this.noLoop();
             this.surface.setVisible(false);
             this.exit();
@@ -160,16 +160,7 @@ public class GridWorld extends PApplet {
                 }
             }
         }
-        return 0;
-    }
-
-    private void randomSpawnGreen() {
-        int x, y;
-        do {
-            x = this.rand.nextInt(this.grid.length);
-            y = this.rand.nextInt(this.grid[0].length);
-        } while (!this.grid[x][y].isEmpty() || this.grid[x][y].isRed);
-        this.grid[x][y].setGreen();
+        return -0.05;
     }
 
     private void randomSpawnRed() {
@@ -179,6 +170,15 @@ public class GridWorld extends PApplet {
             y = this.rand.nextInt(this.grid[0].length);
         } while (!this.grid[x][y].isEmpty() || this.grid[x][y].isGreen);
         this.grid[x][y].setRed();
+    }
+
+    private void randomSpawnGreen() {
+        int x, y;
+        do {
+            x = this.rand.nextInt(this.grid.length);
+            y = this.rand.nextInt(this.grid[0].length);
+        } while (!this.grid[x][y].isEmpty() || this.grid[x][y].isRed);
+        this.grid[x][y].setGreen();
     }
 
     private Point getAgentPos() {

@@ -16,10 +16,10 @@ public enum Main {
 
     public static void main(final String[] args) {
         final Map<Option, Double> config = new HashMap<>();
-        config.put(Option.EXPERIENCE_SIZE, 100e4);
-        config.put(Option.EXPERIENCE_ADD_EVERY, 10.0);
-        config.put(Option.LEARNING_STEPS_PER_ITERATION, 40.0);
-        config.put(Option.NUM_HIDDEN_UNITS, 150.0);
+        config.put(Option.EXPERIENCE_SIZE, 100e2);
+        config.put(Option.EXPERIENCE_ADD_EVERY, 100.0);
+        config.put(Option.LEARNING_STEPS_PER_ITERATION, 50.0);
+        config.put(Option.NUM_HIDDEN_UNITS, 100.0);
 
         Main.agents = new MultiAgents(Main.NUM_AGENTS, 5, 27, config);
         Main.agents.loadAgents();

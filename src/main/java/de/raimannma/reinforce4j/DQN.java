@@ -6,9 +6,9 @@ import net.jafama.FastMath;
 
 import java.io.*;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.SplittableRandom;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -21,13 +21,12 @@ public class DQN {
     private final int expSize;
     private final int learningStepsPerIteration;
     private final double tdErrorClamp;
-    private final int saveInterval;
     private final double alpha;
     private final double epsilon;
     private final Experience[] exp;
-    private final boolean isSaving;
     private final int agentIndex;
-    public Mat W1;
+    private final SplittableRandom rand = new SplittableRandom();
+    Mat W1;
     Mat B1;
     Mat W2;
     Mat B2;
@@ -38,7 +37,7 @@ public class DQN {
     private Mat currentState;
     private int lastAction;
     private int currentAction;
-    private Graph lastG;
+    private Graph graph;
     private boolean isFirstRun;
 
     DQN(final int numActions, final int numStates, final Map<Option, Double> config) {
@@ -51,7 +50,7 @@ public class DQN {
         this.agentIndex = agentIndex;
 
         this.gamma = config.getOrDefault(Option.GAMMA, 0.3);
-        this.epsilon = config.getOrDefault(Option.EPSILON, 0.01);
+        this.epsilon = config.getOrDefault(Option.EPSILON, 0.1);
         this.alpha = config.getOrDefault(Option.ALPHA, 0.05);
 
         this.expAddEvery = DQN.toInteger(config.getOrDefault(Option.EXPERIENCE_ADD_EVERY, 25.0));
@@ -59,10 +58,6 @@ public class DQN {
         this.learningStepsPerIteration = DQN.toInteger(config.getOrDefault(Option.LEARNING_STEPS_PER_ITERATION, 10.0));
         this.tdErrorClamp = config.getOrDefault(Option.TD_ERROR_CLAMP, 1.0);
         final int numHiddenUnits = DQN.toInteger(config.getOrDefault(Option.NUM_HIDDEN_UNITS, 100.0));
-
-        this.saveInterval = DQN.toInteger(config.getOrDefault(Option.SAVE_INTERVAL, 100.0));
-
-        this.isSaving = this.saveInterval != -1;
 
         if (nets == null) {
             this.W1 = DQN.createRandMat(numHiddenUnits, this.numStates);
@@ -125,8 +120,8 @@ public class DQN {
     }
 
     private Mat calcQ(final Mat state, final boolean needsBackprop) {
-        this.lastG = new Graph(needsBackprop);
-        return this.lastG.add(this.lastG.mul(this.W2, this.lastG.tanh(this.lastG.add(this.lastG.mul(this.W1, state), this.B1))), this.B2);
+        this.graph = new Graph(needsBackprop);
+        return this.graph.add(this.graph.mul(this.W2, this.graph.tanh(this.graph.add(this.graph.mul(this.W1, state), this.B1))), this.B2);
     }
 
     public void learn(final double reward) {
@@ -138,36 +133,19 @@ public class DQN {
 
         final Experience exp = new Experience(this.lastState, this.lastAction, this.lastReward, this.currentState);
         this.learnFromTuple(exp);
-        this.calcTDError(exp);
-        if (this.t % this.expAddEvery == 0) {
-            this.exp[this.expIndex] = exp;
-            this.expIndex++;
-            if (this.expIndex > this.expSize) {
-                this.expIndex = 0;
-            }
+        this.exp[this.expIndex] = exp;
+        this.expIndex++;
+        if (this.expIndex > this.expSize) {
+            this.expIndex = 0;
         }
         this.t++;
 
-        if (this.isSaving && this.t % this.saveInterval == 0) {
-            this.saveModel();
-        }
-        final Experience[] sorted = Arrays.stream(this.exp).filter(Objects::nonNull).sorted(Comparator.comparingDouble(Experience::getTdError).reversed()).toArray(Experience[]::new);
-        for (int i = 0; i < this.learningStepsPerIteration; i++) {
-            this.learnFromTuple(sorted[IntStream.range(0, sorted.length).filter(j -> ThreadLocalRandom.current().nextDouble() < Math.pow(0.5, j + 1)).findFirst().orElseThrow()]);
-        }
+        final Experience[] filtered = Arrays.stream(this.exp).filter(Objects::nonNull).toArray(Experience[]::new);
+        IntStream.range(0, this.learningStepsPerIteration).mapToObj(i -> filtered[this.rand.nextInt(filtered.length)]).forEach(this::learnFromTuple);
         this.lastReward = reward;
     }
 
     private void learnFromTuple(final Experience exp) {
-        this.lastG.backward();
-
-        this.W1.update(this.alpha);
-        this.W2.update(this.alpha);
-        this.B1.update(this.alpha);
-        this.B2.update(this.alpha);
-    }
-
-    private void calcTDError(final Experience exp) {
         final Mat tMat = this.calcQ(exp.getCurrentState(), false);
         final double qMax = exp.getLastReward() + this.gamma * Arrays.stream(tMat.w).max().orElseThrow();
 
@@ -179,7 +157,12 @@ public class DQN {
                     -this.tdErrorClamp;
         }
         pred.dw[exp.getLastAction()] = tdError;
-        exp.setTDError(tdError);
+        this.graph.backward();
+
+        this.W1.update(this.alpha);
+        this.W2.update(this.alpha);
+        this.B1.update(this.alpha);
+        this.B2.update(this.alpha);
     }
 
     public void saveModel() {
@@ -236,4 +219,7 @@ public class DQN {
         }
     }
 
+    public int getIndex() {
+        return this.agentIndex;
+    }
 }

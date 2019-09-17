@@ -35,19 +35,13 @@ class Graph {
     }
 
     Mat mul(final Mat mat1, final Mat mat2) {
-        final int m1d = mat1.d;
-        assert m1d == mat2.n;
+        assert mat1.d == mat2.n;
 
-        final int n = mat1.n;
-        final int m2d = mat2.d;
-        final Mat out = new Mat(n, m2d);
-        IntStream.range(0, n).forEach(i -> {
-            final int m1i = m1d * i;
-            final int m2di = m2d * i;
-            IntStream.range(0, m2d)
-                    .forEach(finalJ -> out.w[m2di + finalJ] = IntStream.range(0, m1d)
-                            .mapToDouble(value -> mat1.w[m1i + value] * mat2.w[m2d * value + finalJ])
-                            .sum());
+        final Mat out = new Mat(mat1.n, mat2.d);
+        IntStream.range(0, mat1.n).forEach(i -> {
+            final int m1i = mat1.d * i;
+            final int m2di = mat2.d * i;
+            IntStream.range(0, mat2.d).forEach(finalJ -> out.w[m2di + finalJ] = IntStream.range(0, mat1.d).mapToDouble(value -> mat1.w[m1i + value] * mat2.w[mat2.d * value + finalJ]).sum());
         });
         if (this.needsBackprop) {
             this.backpropQueue.add(new Backprop(BackpropMethod.MUL, mat1, mat2, out));
@@ -90,6 +84,13 @@ class Graph {
             }
         }
 
+        private void addBack(final Mat mat1, final Mat mat2, final Mat out) {
+            IntStream.range(0, mat1.w.length).forEach(i -> {
+                mat1.dw[i] += out.dw[i];
+                mat2.dw[i] += out.dw[i];
+            });
+        }
+
         private void mulBack(final Mat mat1, final Mat mat2, final Mat out) {
             final int n = mat1.n;
             final int m2d = mat2.d;
@@ -107,13 +108,6 @@ class Graph {
                     }
                 }
             }
-        }
-
-        private void addBack(final Mat mat1, final Mat mat2, final Mat out) {
-            IntStream.range(0, mat1.w.length).forEach(i -> {
-                mat1.dw[i] += out.dw[i];
-                mat2.dw[i] += out.dw[i];
-            });
         }
 
         private void tanhBack(final Mat mat, final Mat out) {
